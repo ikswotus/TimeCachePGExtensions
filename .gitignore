@@ -1,3 +1,7 @@
+#vc
+*.db
+*.suo
+
 # Prerequisites
 *.d
 
@@ -8,6 +12,7 @@
 *.elf
 
 # Linker output
+*.ipch
 *.ilk
 *.map
 *.exp
