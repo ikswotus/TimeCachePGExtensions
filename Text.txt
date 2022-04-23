@@ -1,0 +1,55 @@
+CREATE OR REPLACE FUNCTION public.relative_diff_min(l integer, r integer)
+RETURNS double precision
+as $$
+BEGIN
+IF l = 0 then return r::double precision;
+ELSIF (r = 0) THEN RETURN l::double precision;
+ELSE
+	IF l < r THEN RETURN (l-r::double precision)/ l;
+	ELSE RETURN (l-r::double precision) / r;
+	END IF;
+END IF;
+END;
+$$
+LANGUAGE 'plpgsql' IMMUTABLE;
+ALTER FUNCTION public.relative_diff_min(integer, integer) OWNER TO postgres;
+
+
+--------------------------
+CREATE OR REPLACE FUNCTION public.aggregate_quadrant_percentages(base_date timestamp with time zone)
+RETURNS double precision[]
+LANGUAGE 'sql'
+AS $BODY$
+
+with q1 as (select (floor(extract(minute from base_date))::int % 15) / 15.0 as q)
+, q2 as (select 1.0 as q)
+, q3 as (select 1.0 as q)
+, q4 as (select 1.0 as q)
+, q5 as (select (15.0 - floor(extract(minute from base_date))::int % 15) / 15.0 as q)
+select array_agg(q)
+from ( SELECT q from q1 UNION ALL select q from q2 UNION ALL select q from q3 UNION ALL
+	   SELECT q from q4 UNION ALL select q from q5) unioned
+$BODY$;
+
+ALTER FUNCTION public.aggregate_quadrant_percentages(timestamp with time zone) OWNER TO postgres;
+
+-- EXAMPLE:
+--select public.aggregate_quadrant_percentages(CURRENT_TIMESTAMP);
+
+
+---------------------------------------------------
+CREATE OR REPLACE FUNCTION public.aggregate_hourly_quadrants(base_date timestamp with time zone)
+RETURNS integer[]
+LANGUAGE 'sql'
+AS $BODY$
+SELECT array_agg(extract(dow from generate_series) * 96  +
+				 extract(hour from generate_series) * 4 + 
+				 floor((extract(minute from generate_series) / 15))::int)
+	   FROM generate_series(base_date, base_date - interval '1 hour', -1 * interval '15 minutes')
+
+$BODY$;
+
+ALTER FUNCTION public.aggregate_hourly_quadrants(timestamp with time zone) OWNER TO postgres;
+
+-- EXAMPLE:
+-- select public.aggregate_hourly_quadrants(CURRENT_TIMESTAMP);

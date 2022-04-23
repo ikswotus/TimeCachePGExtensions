@@ -1,0 +1,5 @@
+#TimeCachePGExtensions - Helper functions for time cache
+comment = 'TimeCachePGExtensions - helper functions for use in TimeCache'
+default_version = '1.0'
+module_pathname = '$libdir/TimeCachePGExtensions'
+relocatable = false

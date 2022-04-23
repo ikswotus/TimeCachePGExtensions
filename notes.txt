@@ -1,0 +1,16 @@
+Extension Project
+
+x64 configuration only
+
+General -> Configuration Type = Dynamic Library .dll
+C/C++ -> Additional Include Directories = postgres/include
+      -> Code Generation -> Enable C++ Exceptions = no
+	  -> Advanced -> Compile As -> C Code /TC
+Linker ->  Input -> Additional Dependencies -> postgres.lib
+           Manifest File -> No
+		   
+ Additional Library Paths: 
+		  * C:\Program Files\PostgreSQL\13\lib
+		  Additional Includes
+		  * C:\Program Files\PostgreSQL\13\include\server\port\win32_msvc
+		  * C:\Program Files\PostgreSQL\13\include
