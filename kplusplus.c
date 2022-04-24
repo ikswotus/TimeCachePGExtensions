@@ -4,10 +4,12 @@
 PGDLLEXPORT Datum kplusplus(PG_FUNCTION_ARGS);
 PGDLLEXPORT Datum ksimple(PG_FUNCTION_ARGS);
 PGDLLEXPORT Datum ksimple_all(PG_FUNCTION_ARGS);
+PGDLLEXPORT Datum kplusplus_all(PG_FUNCTION_ARGS);
 
 PG_FUNCTION_INFO_V1(kplusplus);
 PG_FUNCTION_INFO_V1(ksimple);
 PG_FUNCTION_INFO_V1(ksimple_all);
+PG_FUNCTION_INFO_V1(kplusplus_all);
 
 typedef struct {
 	double average;
@@ -222,6 +224,13 @@ ClusterStats* get_all_cluster_stats(Cluster* c, int k)
 	return cstats;
 }
 
+
+
+int choose_random_index(int pc)
+{
+	return rand() % pc;
+}
+
 int choose_probable_index(double sum, double* distances, int pc)
 {
 	double cp = 0.0;
@@ -238,11 +247,6 @@ int choose_probable_index(double sum, double* distances, int pc)
 	return choose_random_index(pc);
 }
 
-
-int choose_random_index(int pc)
-{
-	return rand() % pc;
-}
 
 double score_cluster(double* centroids, int k, ClusterPoint* points, int pc)
 {
@@ -626,7 +630,7 @@ void kpp_c_dynamic(Cluster* c, double* arr, int pc, double threshold)
 
 Cluster* internal_kplusplus(double* values, int count, int k, int seeds, int updates)
 {
-	srand(time(NULL));
+	//srand(time(NULL));
 
 	Cluster* best = palloc(sizeof(Cluster));
 	best->count = count;
@@ -804,6 +808,7 @@ Datum kplusplus_c(PG_FUNCTION_ARGS)
 	
 	double* convArray = get_converted_array(arr, valueType, array_length);
 
+	
 	int c = fcinfo->nargs > 4 ? PG_GETARG_INT32(4) : k - 1;
 
 	if (c >= k || c < 0)
@@ -828,10 +833,12 @@ Datum kplusplus_c(PG_FUNCTION_ARGS)
 	qsort(ccounts, k, sizeof(ClusterCounts), compare_descending_counts);
 	// Desired index will be k-1-c
 	int bigIndex = k - 1 - c;
+
 	int actualIndex = ccounts[bigIndex].cluster_index;
 
 	pfree(ccounts);
-	pfree(ccounts);
+	pfree(counts);
+
 
 	ClusterStats* stats = get_cluster_stats(best, actualIndex);
 
@@ -1246,6 +1253,8 @@ typedef struct
 	ClusterStats* stats;
 } ksimple_fctx;
 
+
+
 /**
  * ksimple, but returns all clusters
  * implemented as srf
@@ -1289,7 +1298,7 @@ Datum ksimple_all(PG_FUNCTION_ARGS)
 		double* convArray = get_converted_array(arr, valueType, array_length);
 
 		MemoryContext oldcontext;
-		Interval	interval_zero;
+
 
 		/* create a function context for cross-call persistence */
 		funcctx = SRF_FIRSTCALL_INIT();
@@ -1354,15 +1363,17 @@ Datum ksimple_all(PG_FUNCTION_ARGS)
 		BlessTupleDesc(tupDesc);
 
 		// Convert to record type for return
-		bool isnull[5];
-		for (int i = 0; i < 5; i++)
+		bool isnull[6];
+		for (int i = 0; i < 6; i++)
 			isnull[i] = false;
-		Datum retDat[5];
-		retDat[0] = Float8GetDatum(fctx->stats[fctx->current_value].average);
-		retDat[1] = Float8GetDatum(fctx->stats[fctx->current_value].min);
-		retDat[2] = Float8GetDatum(fctx->stats[fctx->current_value].max);
-		retDat[3] = Float8GetDatum(fctx->stats[fctx->current_value].stddev);
-		retDat[4] = Int32GetDatum(fctx->stats[fctx->current_value].count);
+		Datum retDat[6];
+
+		retDat[0] = Int32GetDatum(fctx->current_value);
+		retDat[1] = Float8GetDatum(fctx->stats[fctx->current_value].average);
+		retDat[2] = Float8GetDatum(fctx->stats[fctx->current_value].min);
+		retDat[3] = Float8GetDatum(fctx->stats[fctx->current_value].max);
+		retDat[4] = Float8GetDatum(fctx->stats[fctx->current_value].stddev);
+		retDat[5] = Int32GetDatum(fctx->stats[fctx->current_value].count);
 
 		BlessTupleDesc(tupDesc);
 		HeapTuple hd = heap_form_tuple(tupDesc, retDat, isnull);
@@ -1370,6 +1381,158 @@ Datum ksimple_all(PG_FUNCTION_ARGS)
 		Datum d = HeapTupleGetDatum(hd);
 
 		
+		HeapTuple ht = heap_form_tuple(tupDesc, retDat, isnull);
+
+		fctx->current_value++;
+
+
+		/* do when there is more left to send */
+		SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(ht));
+	}
+	else
+	{
+		/* do when there is no more left */
+		SRF_RETURN_DONE(funcctx);
+	}
+}
+
+
+/**
+ * kplusplus, but returns all clusters
+ * implemented as srf
+ * 
+ * TODO: We do basically all the work in the init(),
+ * subsequent calls just retrieve stats via index...
+ * Perhaps there's a better way to do this
+ */
+Datum kplusplus_all(PG_FUNCTION_ARGS)
+{
+	TupleDesc tupDesc;
+
+	if (get_call_result_type(fcinfo, NULL, &tupDesc) != TYPEFUNC_COMPOSITE)
+	{
+		ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), errmsg("function returning record called in context that cannot accept type record")));
+	}
+
+
+	FuncCallContext* funcctx;
+	ksimple_fctx* fctx;
+
+	/* stuff done only on the first call of the function */
+	if (SRF_IS_FIRSTCALL())
+	{
+		if (fcinfo->nargs < 4)
+			ereport(ERROR, errcode(ERRCODE_FEATURE_NOT_SUPPORTED), errmsg("kplusplus_all requires four arguments: points,k,seeds,updates."));
+		if (PG_ARGISNULL(0))
+			ereport(ERROR, errcode(ERRCODE_FEATURE_NOT_SUPPORTED), errmsg("kplusplus_all called with NULL array."));
+		ArrayType* arr = PG_GETARG_ARRAYTYPE_P(0);
+		if (ARR_NDIM(arr) != 1)
+			ereport(ERROR, errcode(ERRCODE_FEATURE_NOT_SUPPORTED), errmsg("kplusplus_all only supports 1-dimensional arrays."));
+		Oid valueType = ARR_ELEMTYPE(arr);
+
+		if (valueType != FLOAT4OID && valueType != FLOAT8OID && valueType != INT8OID && valueType != INT4OID)
+			ereport(ERROR, errcode(ERRCODE_FEATURE_NOT_SUPPORTED), errmsg("kplusplus_all supports only integer/float 4/8 types."));
+
+		int array_length = (ARR_DIMS(arr))[0];
+		if (array_length < 1)
+			ereport(ERROR, errcode(ERRCODE_FEATURE_NOT_SUPPORTED), errmsg("kplusplus_all empty array."));
+		int k = PG_GETARG_INT32(1);
+		if (k < 1)
+			ereport(ERROR, errcode(ERRCODE_FEATURE_NOT_SUPPORTED), errmsg("kplusplus_all k must be >= 1, given: %d", k));
+		if (k > array_length)
+			ereport(ERROR, errcode(ERRCODE_FEATURE_NOT_SUPPORTED), errmsg("kplusplus_all array length %d less than k: %d", array_length, k));
+		double* convArray = get_converted_array(arr, valueType, array_length);
+
+		MemoryContext oldcontext;
+
+		int seeds = PG_GETARG_INT32(2);
+		if (seeds < 1)
+			seeds = 1;
+		int updates = PG_GETARG_INT32(3);
+		if (updates < 1)
+			updates = 1;
+
+		/* create a function context for cross-call persistence */
+		funcctx = SRF_FIRSTCALL_INIT();
+
+		/*
+		 * switch to memory context appropriate for multiple function calls
+		 */
+		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
+
+		/* allocate memory for user context */
+		fctx = (ksimple_fctx*)
+			palloc(sizeof(ksimple_fctx));
+
+		/*
+		 * Use fctx to keep state from call to call. Seed current with the
+		 * original start value
+		 */
+		fctx->cluster_count = k;
+		fctx->current_value = 0;
+
+		Cluster* best = internal_kplusplus(convArray, array_length, k, seeds, updates);
+
+		pfree(convArray);
+
+		int* counts = palloc0(sizeof(int) * k);
+		for (int i = 0; i < array_length; i++)
+		{
+			counts[best->points[i].c_index]++;
+		}
+		int bigIndex = 0;
+		int bigIndexCounts = counts[0];
+		for (int i = 0; i < k; i++)
+		{
+			if (counts[i] > bigIndexCounts)
+			{
+				bigIndexCounts = counts[i];
+				bigIndex = i;
+			}
+		}
+		pfree(counts);
+
+		fctx->stats = get_all_cluster_stats(best, k);
+		pfree(best);
+
+		funcctx->user_fctx = fctx;
+		MemoryContextSwitchTo(oldcontext);
+	}
+
+	/* stuff done on every call of the function */
+	funcctx = SRF_PERCALL_SETUP();
+
+	/*
+	 * get the saved state and use current as the result for this iteration
+	 */
+	fctx = funcctx->user_fctx;
+
+
+
+	if (fctx->current_value < fctx->cluster_count)
+	{
+
+		BlessTupleDesc(tupDesc);
+
+		// Convert to record type for return
+		bool isnull[6];
+		for (int i = 0; i < 6; i++)
+			isnull[i] = false;
+		Datum retDat[6];
+
+		retDat[0] = Int32GetDatum(fctx->current_value);
+		retDat[1] = Float8GetDatum(fctx->stats[fctx->current_value].average);
+		retDat[2] = Float8GetDatum(fctx->stats[fctx->current_value].min);
+		retDat[3] = Float8GetDatum(fctx->stats[fctx->current_value].max);
+		retDat[4] = Float8GetDatum(fctx->stats[fctx->current_value].stddev);
+		retDat[5] = Int32GetDatum(fctx->stats[fctx->current_value].count);
+
+		BlessTupleDesc(tupDesc);
+		HeapTuple hd = heap_form_tuple(tupDesc, retDat, isnull);
+
+		Datum d = HeapTupleGetDatum(hd);
+
+
 		HeapTuple ht = heap_form_tuple(tupDesc, retDat, isnull);
 
 		fctx->current_value++;

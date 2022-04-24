@@ -34,7 +34,6 @@
   <ItemGroup>
     <Text Include="notes.txt" />
     <Text Include="TimeCachePGExtensions.control" />
-    <Text Include="Text.txt" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="timecache.h">

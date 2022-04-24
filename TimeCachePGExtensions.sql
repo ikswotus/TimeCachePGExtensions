@@ -16,4 +16,7 @@ returns TABLE(average double precision, minimum double precision, maximum double
 as 'MODULE_PATHNAME'
 LANGUAGE C IMMUTABLE;
 
-
+CREATE OR REPLACE FUNCTION kplusplus(double precision[], int, int, int)
+returns TABLE(average double precision, minimum double precision, maximum double precision, standarddev double precision, numcount int)
+as 'MODULE_PATHNAME'
+LANGUAGE C IMMUTABLE;
