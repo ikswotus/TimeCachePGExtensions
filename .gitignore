@@ -55,3 +55,6 @@ modules.order
 Module.symvers
 Mkfile.old
 dkms.conf
+*.db-wal
+*.db-shm
+.vs/TimeCachePGExtensions/v16/Browse.VC.opendb
