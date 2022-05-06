@@ -1,6 +1,28 @@
 #include "timecache.h"
 
 
+/***
+* Some methods for  rough testing of data for usability with the kplusplus methods
+* 
+* all functions are prefixed with ktest_
+* 
+* ktest_adjacency_rd 
+* - Input should be ordered points
+* - Computes the relative difference between adjacent points
+* - Returns the total number of differences that exceed the provided threshold
+* 
+* This determines if each point is "close-enough" to nearby points. If we have wild changes in data from quadrant-quadrant or hour-hour
+* this indicates a strong possibility the data will not cluster well -- Its entirely possible to have consistent points within each cluster, maybe
+* the data is something that occurrs only at :10 minutes past the hour, but for more regular/sinusoidal data it is anticipated that most
+* points won't deviate too far from the previous/next point
+* 
+* 
+* ktest_adjacency_arr
+* - Input should be ordered poitns
+* - Computes the actual differences between each point
+* 
+* Mostly a debugging method...
+*/
 PGDLLEXPORT Datum ktest_adjacency_rd(PG_FUNCTION_ARGS);
 PGDLLEXPORT Datum ktest_adjacency_arr(PG_FUNCTION_ARGS);
 PG_FUNCTION_INFO_V1(ktest_adjacency_rd);
@@ -8,16 +30,22 @@ PG_FUNCTION_INFO_V1(ktest_adjacency_arr);
 
 /// <summary>
 /// Relative difference computed as (l-r)/min(l,r)
+/// 
+/// Lots of options exist...but min(l,r) results in a the same change value regardless of direction
+/// 
+/// https://en.wikipedia.org/wiki/Relative_change_and_difference
 /// </summary>
 /// <param name="l"></param>
 /// <param name="r"></param>
 /// <returns></returns>
 double relative_diff_min(double l, double r)
 {
+	// TODO: Undefined? Should we do NaN? Infinity? The non-zero(potentially) number definitely presents some issues...
 	if (l == 0.0)
 		return r;
 	if (r == 0.0)
 		return l;
+
 	if (l < r)
 		return (l - r) / l;
 	return (l - r) / r;
