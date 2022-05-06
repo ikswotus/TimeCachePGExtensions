@@ -1,5 +1,24 @@
 #include "timecache.h"
 
+/**
+* 
+https://en.wikipedia.org/wiki/K-means_clustering
+
+Methods for clustering  some data.
+
+kplusplus - The basic implementation, takes an array of points
+and clusters them by using simple value difference as the distance computation (1-dimensional)
+
+
+ksimple - A faster version that does not update() centroids
+and chooses initial points based on maximum differences between points.
+This does NOT produce optimal clustering and may not even come close, but can do well for cases
+where we expect at most 3 clusters: a 'low' outlier group, a 'high' outlier group
+and a range of central points where most of the data will fall.
+
+* 
+*
+*/
 
 PGDLLEXPORT Datum kplusplus(PG_FUNCTION_ARGS);
 PGDLLEXPORT Datum ksimple(PG_FUNCTION_ARGS);
